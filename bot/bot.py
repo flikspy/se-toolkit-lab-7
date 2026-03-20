@@ -34,13 +34,14 @@ def parse_command(text: str) -> tuple[str, str | None]:
     return command, argument
 
 
-def handle_command(command: str, argument: str | None = None) -> str:
+def handle_command(command: str, argument: str | None = None, config=None) -> str:
     """Route a command to the appropriate handler.
-    
+
     Args:
         command: The command name (e.g., "/start", "/scores").
         argument: Optional argument for the command.
-        
+        config: Optional config object with API credentials.
+
     Returns:
         The handler's response text.
     """
@@ -49,25 +50,37 @@ def handle_command(command: str, argument: str | None = None) -> str:
     elif command == "/help":
         return handle_help()
     elif command == "/health":
-        return handle_health()
+        if config:
+            return handle_health(config.lms_api_url, config.lms_api_key)
+        return handle_health("http://localhost:42002", "my-secret-api-key")
     elif command == "/labs":
-        return handle_labs()
+        if config:
+            return handle_labs(config.lms_api_url, config.lms_api_key)
+        return handle_labs("http://localhost:42002", "my-secret-api-key")
     elif command == "/scores":
-        return handle_scores(argument)
+        if config:
+            return handle_scores(argument, config.lms_api_url, config.lms_api_key)
+        return handle_scores(argument, "http://localhost:42002", "my-secret-api-key")
     else:
         return f"❓ Unknown command: {command}\nSend /help to see available commands."
 
 
 def run_test_mode(command_text: str) -> None:
     """Run the bot in test mode (no Telegram connection).
-    
+
     Calls the handler directly and prints the response to stdout.
-    
+
     Args:
         command_text: The command to test (e.g., "/start" or "/scores lab-04").
     """
+    # Try to load config, but use defaults if not available
+    try:
+        config = get_config()
+    except ValueError:
+        config = None
+    
     command, argument = parse_command(command_text)
-    response = handle_command(command, argument)
+    response = handle_command(command, argument, config)
     print(response)
 
 
@@ -90,12 +103,12 @@ def run_telegram_bot() -> None:
     async def handle_telegram_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle a Telegram command message."""
         command = f"/{update.message.text.split()[0][1:].lower()}"
-        
+
         # Extract argument if present
         parts = update.message.text.split(maxsplit=1)
         argument = parts[1] if len(parts) > 1 else None
-        
-        response = handle_command(command, argument)
+
+        response = handle_command(command, argument, config)
         await update.message.reply_text(response)
     
     async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
