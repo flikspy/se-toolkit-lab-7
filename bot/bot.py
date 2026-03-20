@@ -4,6 +4,7 @@
 Usage:
     uv run bot.py              # Start Telegram bot
     uv run bot.py --test "/start"  # Test mode (no Telegram connection)
+    uv run bot.py --test "what labs are available"  # NL query test mode
 """
 
 import argparse
@@ -16,6 +17,8 @@ from handlers.commands import (
     handle_health,
     handle_labs,
     handle_scores,
+    route_intent,
+    get_welcome_keyboard,
 )
 
 
@@ -79,7 +82,26 @@ def run_test_mode(command_text: str) -> None:
     except ValueError:
         config = None
     
-    command, argument = parse_command(command_text)
+    # Check if this is a natural language query (doesn't start with /)
+    text = command_text.strip()
+    if not text.startswith("/"):
+        # Natural language query - use intent routing
+        if config:
+            response = route_intent(
+                text,
+                config.lms_api_url,
+                config.lms_api_key,
+                config.llm_api_key,
+                config.llm_api_base_url,
+                config.llm_api_model,
+            )
+        else:
+            response = "LLM routing requires configuration. Please set up .env.bot.secret"
+        print(response)
+        return
+    
+    # Command - use regular routing
+    command, argument = parse_command(text)
     response = handle_command(command, argument, config)
     print(response)
 
@@ -92,6 +114,7 @@ def run_telegram_bot() -> None:
     from telegram import Update
     from telegram.ext import (
         Application,
+        CallbackQueryHandler,
         CommandHandler,
         MessageHandler,
         filters,
@@ -109,19 +132,51 @@ def run_telegram_bot() -> None:
         argument = parts[1] if len(parts) > 1 else None
 
         response = handle_command(command, argument, config)
+        
+        # Add inline keyboard for /start command
+        if command == "/start":
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+            keyboard = get_welcome_keyboard()
+            reply_markup = InlineKeyboardMarkup([
+                [InlineKeyboardButton(label, callback_data=cb_data) for label, cb_data in row]
+                for row in keyboard
+            ])
+            await update.message.reply_text(response, reply_markup=reply_markup)
+        else:
+            await update.message.reply_text(response)
+
+    async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle plain text messages with LLM intent routing."""
+        message = update.message.text
+        
+        # Route through LLM
+        response = route_intent(
+            message,
+            config.lms_api_url,
+            config.lms_api_key,
+            config.llm_api_key,
+            config.llm_api_base_url,
+            config.llm_api_model,
+        )
+        
         await update.message.reply_text(response)
     
-    async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle plain text messages (for Task 3 - LLM routing)."""
-        # For now, just suggest using commands
-        await update.message.reply_text(
-            "🤔 I understand commands like /start, /help, /labs, /scores.\n\n"
-            "In Task 3, I'll also understand natural language questions!"
-        )
+    async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle inline keyboard button callbacks."""
+        query = update.callback_query
+        await query.answer()
+        
+        # Execute the command associated with the button
+        command_data = query.data
+        if command_data.startswith("/"):
+            # It's a command - execute it
+            command, argument = parse_command(command_data)
+            response = handle_command(command, argument, config)
+            await query.edit_message_text(response)
     
     # Create application
     application = Application.builder().token(config.bot_token).build()
-    
+
     # Add handlers
     application.add_handler(CommandHandler("start", handle_telegram_command))
     application.add_handler(CommandHandler("help", handle_telegram_command))
@@ -129,6 +184,7 @@ def run_telegram_bot() -> None:
     application.add_handler(CommandHandler("labs", handle_telegram_command))
     application.add_handler(CommandHandler("scores", handle_telegram_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
+    application.add_handler(CallbackQueryHandler(handle_callback))
     
     # Start polling
     print("🤖 Bot is starting... Press Ctrl+C to stop.")
