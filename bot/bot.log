@@ -1,1 +1,4 @@
 nohup: ignoring input
+🤖 Bot is starting... Press Ctrl+C to stop.
+<sys>:0: RuntimeWarning: coroutine 'Updater.stop' was never awaited
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
