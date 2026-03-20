@@ -10,7 +10,7 @@ import argparse
 import sys
 
 from config import get_config
-from handlers import (
+from handlers.commands import (
     handle_start,
     handle_help,
     handle_health,
