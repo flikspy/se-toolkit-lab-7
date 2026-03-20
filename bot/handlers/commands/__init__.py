@@ -10,6 +10,7 @@ from .help import handle_help
 from .health import handle_health
 from .labs import handle_labs
 from .scores import handle_scores
+from .intent import route_intent, get_welcome_keyboard, format_keyboard_hint
 
 __all__ = [
     "handle_start",
@@ -17,4 +18,7 @@ __all__ = [
     "handle_health",
     "handle_labs",
     "handle_scores",
+    "route_intent",
+    "get_welcome_keyboard",
+    "format_keyboard_hint",
 ]
